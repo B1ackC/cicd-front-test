@@ -1,0 +1,53 @@
+name: rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "배포할 SHA값을 입력"
+        required: true
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  S3_BUCKET: ${{ secrets.S3_BUCKET }}
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Check if release exists
+        run: |
+          TARGET=${{ github.event.inputs.target_sha }}
+          echo "Checking s3://$S3_BUCKET/releases/$TARGET/"
+          aws s3 ls "s3://$S3_BUCKET/releases/$TARGET/" > /dev/null || \
+          (echo "releases/$TARGET/ not found in S3, 롤백 실패."; exit 1)
+
+      - name: Restore from releases/<SHA> to current
+        run: |
+          TARGET=${{ github.event.inputs.target_sha }}
+          aws s3 sync "s3://$S3_BUCKET/releases/$TARGET/" \
+                      "s3://$S3_BUCKET/current/" \
+                      --delete
+
+      - name: Update version
+        run: |
+          TARGET=${{ github.event.inputs.target_sha }}
+
+          aws s3 rm s3://$S3_BUCKET/meta/ --recursive || true
+
+          touch "$TARGET"
+
+          aws s3 cp "$TARGET" "s3://$S3_BUCKET/meta/$TARGET"
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
+            --paths "/*"
