@@ -87,7 +87,7 @@ function App() {
                             <div className="profile-body">
                                 <p>• 온프레 인프라 및 서버 운영 경험</p>
                                 <p>• CI/CD 파이프라인 구축 및 개선</p>
-                                <p>• 현재 페이지는 CICD 테스트용 페이지입니다 - TEST001</p>
+                                <p>• 현재 페이지는 CICD 테스트용 페이지입니다 - TEST002</p>
                             </div>
 
                             <div className="profile-tags">
