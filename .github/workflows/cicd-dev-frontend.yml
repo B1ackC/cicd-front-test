@@ -1,0 +1,53 @@
+name: cicd-dev-frontend
+on:
+  push:
+    branches: [ dev ]
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  S3_BUCKET: ${{ secrets.S3_BUCKET }}
+
+jobs:
+    build-upload:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - name: Setup node
+          uses: actions/setup-node@v4
+          with:
+            node-version: "20"
+
+        - name: Install dependencies
+          run: npm ci
+
+        - name: Build
+          run: npm run build
+
+        - name: Configure AWS credentials
+          uses: aws-actions/configure-aws-credentials@v5
+          with:
+            aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+            aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            aws-region: ${{ env.AWS_REGION }}
+
+        - name: Backup build file
+          run: |
+            aws s3 sync ./build s3://$S3_BUCKET/releases/${{ github.sha }}/ --delete
+
+        - name: Deploy
+          run: |
+            aws s3 sync ./build s3://$S3_BUCKET/current/ --delete
+
+        - name: Update version
+          run: |
+            aws s3 rm s3://$S3_BUCKET/meta/ --recursive || true
+            
+            touch "${{ github.sha }}"
+            
+            aws s3 cp "${{ github.sha }}" "s3://$S3_BUCKET/meta/${{ github.sha }}"
+
+        - name: Invalidate CloudFront cache
+          run: |
+            aws cloudfront create-invalidation \
+              --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
+              --paths "/*"
